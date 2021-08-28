@@ -11,7 +11,7 @@ from tqdm import tqdm
 import numpy as np
 from torch import nn
 config = configparser.ConfigParser()
-config.read("configs/kitti.config")
+config.read("src/configs/kitti.config")
 learning_rate = config.getfloat("Training", "learning_rate")
 epochs = config.getint("Training", "epochs")
 eval_freq = config.getint("Training", "eval_freq")

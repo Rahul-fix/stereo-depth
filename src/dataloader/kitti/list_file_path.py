@@ -2,7 +2,7 @@ import os
 import configparser
 
 config = configparser.ConfigParser()
-config.read(os.path.join("configs", "kitti.config"))
+config.read(os.path.join("src/configs", "kitti.config"))
 
 
 def get_image_pair_names(data_path, mode="train"):

@@ -2,7 +2,7 @@ from torch import nn
 import configparser
 
 config = configparser.ConfigParser()
-config.read("configs/kitti.config")
+config.read("src/configs/kitti.config")
 
 in_channels = config.getint("Siamese", "in_channels")
 channels = config.getint("Siamese", "channels")

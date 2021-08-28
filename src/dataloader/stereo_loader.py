@@ -11,7 +11,7 @@ from torchvision.io.image import ImageReadMode
 from matplotlib import pyplot as plt
 
 config = configparser.ConfigParser()
-config.read(os.path.join("configs", "kitti.config"))
+config.read(os.path.join("src/configs", "kitti.config"))
 
 
 class StereoPair(Dataset):
