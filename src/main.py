@@ -10,6 +10,7 @@ import torch
 from tqdm import tqdm
 import numpy as np
 from torch import nn
+import os
 config = configparser.ConfigParser()
 config.read("src/configs/kitti.config")
 learning_rate = config.getfloat("Training", "learning_rate")
@@ -36,13 +37,73 @@ dataloader_validation = DataLoader(stereo_dataset_val, batch_size=batch_size, sh
 # model = stereo_depth.StereoDepth()
 # model =nn.DataParallel(model).to(device)
 
+# load pretrained model
+def load_pre_train_model(path_to_preTrainModel):
+    checkpoint = torch.load(path_to_preTrainModel)
+    model = checkpoint['model']
+
+    if checkpoint['stats']['epoch'] == []:
+        int_epoch = len(checkpoint['stats']['train_loss'])
+    else:
+        int_epoch = checkpoint['stats']['epoch']
+        
+    stats = checkpoint['stats']
+    return model, int_epoch, stats
+
 # save model
 def save_model(model, stats, model_name):
     model_dict = {"model": model, "stats": stats}
-    torch.save(model_dict, "../models/" + model_name + ".pth")
+    torch.save(model_dict, "models/" + model_name + "_tri_30.pth")
 
+
+def train_checkpoint(path_to_preTrainModel):
+    model, init_epoch, stats = load_pre_train_model(path_to_preTrainModel)
+    model = nn.DataParallel(model).to(device)
+    criterion = torch.nn.SmoothL1Loss().to(device)
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
+    torch.autograd.set_detect_anomaly(True)
+    loss_hist = []
+    for epoch in range(init_epoch, epochs):
+        loss_list = []
+        progress_bar = tqdm(enumerate(dataloader_train), total=len(dataloader_train))
+        for i, batch in progress_bar:
+            left_image = batch[0].to(device)
+            right_image = batch[1].to(device)
+            gt_disparity = batch[2].to(device)
+
+            optimizer.zero_grad()
+            predicted_disparity = model(left_image, right_image)
+
+            non_zero_disp_indices = torch.where(gt_disparity > 0)
+
+            loss = criterion(predicted_disparity[non_zero_disp_indices], gt_disparity[non_zero_disp_indices])
+            loss_list.append(loss.item())
+
+            loss.backward()
+            optimizer.step()
+            progress_bar.set_description(f"Epoch {0 + epoch} Iter {i + 1}: loss {loss.item():.5f}. ")
+
+        print(np.mean(loss_list))
+        loss_hist.append(np.mean(loss_list))
+        stats['epoch'] = epoch
+        stats['train_loss'].append(loss_hist[-1])
+
+        if epoch % eval_freq == 0:
+            three_pe, valid_loss = evaluate(model)
+            print(f"3PE at epoch {epoch}: {round(three_pe*100.0, 3)}%")
+        else:
+            three_pe, valid_loss = -1, -1
+        stats["accuracy"].append(three_pe)
+        stats["valid_loss"].append(valid_loss)
+
+         # saving checkpoint
+        if epoch % save_freq == 0:
+            save_model(model, stats, "stereo_depth_kitti3")
+        save_model(model, stats, "stereo_depth_kitti3")
+    save_model(model, stats, "stereo_depth_kitti3")
 
 def train():
+    loa
     model = stereo_depth.StereoDepth()
     model = nn.DataParallel(model).to(device)
     criterion = torch.nn.SmoothL1Loss().to(device)
@@ -78,7 +139,7 @@ def train():
 
         print(np.mean(loss_list))
         loss_hist.append(np.mean(loss_list))
-        stats[epoch] = epoch
+        stats['epoch'] = epoch
         stats['train_loss'].append(loss_hist[-1])
 
         if epoch % eval_freq == 0:
@@ -111,7 +172,7 @@ def evaluate(model):
         resize = transforms.Resize((gt_disparity.shape[-2], gt_disparity.shape[-1]))
         predicted_disparity = model(left_image, right_image)
         predicted_disparity = resize(predicted_disparity)
-        plt.imshow(predicted_disparity.cpu().squeeze(0))
+        # plt.imshow(predicted_disparity.cpu().squeeze(0))
         # plt.show()
         three_pe = three_pixel_error(gt_disparity[non_zero_disp_indices],predicted_disparity[non_zero_disp_indices])
         three_pe_list.append(three_pe.to("cpu"))
@@ -137,6 +198,9 @@ def three_pixel_error(gt_disparity,predicted_disparity):
 # stereo_pair = stereo_dataset[0]
 # predicted_disparity, gt_disparity = model(stereo_pair)
 
-train()
-# m=torch.load("../models/stereo_depth_kitti3.pth")['model']
+# train()
+
+# Train with checkpoint
+train_checkpoint("models/stereo_depth_kitti3_tri.pth")
+# checkpoint = torch.load("models/stereo_depth_kitti3_tri.pth")['model']
 # print(evaluate(m))
