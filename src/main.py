@@ -11,6 +11,8 @@ from tqdm import tqdm
 import numpy as np
 from torch import nn
 import os
+from dataloader import plotting
+
 config = configparser.ConfigParser()
 config.read("src/configs/kitti.config")
 learning_rate = config.getfloat("Training", "learning_rate")
@@ -43,9 +45,9 @@ def load_pre_train_model(path_to_preTrainModel):
     model = checkpoint['model']
 
     if checkpoint['stats']['epoch'] == []:
-        int_epoch = len(checkpoint['stats']['train_loss'])
+        int_epoch = len(checkpoint['stats']['train_loss']) + 1
     else:
-        int_epoch = checkpoint['stats']['epoch']
+        int_epoch = checkpoint['stats']['epoch'] + 1
         
     stats = checkpoint['stats']
     return model, int_epoch, stats
@@ -53,7 +55,7 @@ def load_pre_train_model(path_to_preTrainModel):
 # save model
 def save_model(model, stats, model_name):
     model_dict = {"model": model, "stats": stats}
-    torch.save(model_dict, "models/" + model_name + "_tri_30.pth")
+    torch.save(model_dict, "models/" + model_name + "test_InOupt_images.pth")
 
 
 def train_checkpoint(path_to_preTrainModel):
@@ -63,7 +65,7 @@ def train_checkpoint(path_to_preTrainModel):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
     torch.autograd.set_detect_anomaly(True)
     loss_hist = []
-    for epoch in range(init_epoch, epochs):
+    for epoch in range(init_epoch, epochs + 1):
         loss_list = []
         progress_bar = tqdm(enumerate(dataloader_train), total=len(dataloader_train))
         for i, batch in progress_bar:
@@ -102,8 +104,8 @@ def train_checkpoint(path_to_preTrainModel):
         save_model(model, stats, "stereo_depth_kitti3")
     save_model(model, stats, "stereo_depth_kitti3")
 
+# Normal training
 def train():
-    loa
     model = stereo_depth.StereoDepth()
     model = nn.DataParallel(model).to(device)
     criterion = torch.nn.SmoothL1Loss().to(device)
@@ -162,11 +164,14 @@ def evaluate(model):
     criterion = torch.nn.SmoothL1Loss()
     three_pe_list = []
     loss_list=[]
+    val_counter = 0
 
     for batch in dataloader_validation:
         left_image = batch[0].to(device)
         right_image = batch[1].to(device)
         gt_disparity = batch[2].squeeze(1).to(device)
+        # plt.imshow(predicted_disparity.cpu().squeeze(0))
+        # plt.show()
 
         non_zero_disp_indices = torch.where(gt_disparity > 0)
         resize = transforms.Resize((gt_disparity.shape[-2], gt_disparity.shape[-1]))
@@ -179,6 +184,13 @@ def evaluate(model):
         print(three_pe)
         loss = criterion(predicted_disparity, gt_disparity)
         loss_list.append(loss.item())
+        print("Loss:{loss}")
+
+        # Plotting input and output
+        plotting.plot_disparity(left_image, right_image, gt_disparity, predicted_disparity, three_pe, stereo_path_list_val[val_counter])
+        plt.tight_layout()
+        plt.show()
+        val_counter += 1
 
     return np.mean(three_pe_list),np.mean(loss_list)
 
@@ -201,6 +213,20 @@ def three_pixel_error(gt_disparity,predicted_disparity):
 # train()
 
 # Train with checkpoint
-train_checkpoint("models/stereo_depth_kitti3_tri.pth")
-# checkpoint = torch.load("models/stereo_depth_kitti3_tri.pth")['model']
-# print(evaluate(m))
+# train_checkpoint("models/stereo_depth_kitti3_nearest_jit_150.pth")
+
+# # plotting the augmentaions and training graphs
+# # plotting.plot_aug(stereo_path_list_train[0])
+# stats = plotting.load_pre_train_model("models/stereo_depth_kitti3_tri_150.pth")
+# plotting.visualize_progress(stats["train_loss"], stats["valid_loss"], stats["accuracy"], start=0)
+# plt.show()
+
+# plotting Output Images from validation
+m = torch.load("models/stereo_depth_kitti3_tri_150.pth")['model']
+print(evaluate(m))
+
+# # printing 3PE and training loss
+# stats = plotting.load_pre_train_model("models/stereo_depth_kitti3_tri_150.pth")
+# train, three_pe, epoch = stats["train_loss"], stats["accuracy"],stats["epoch"]
+# print(f"3PE at epoch {epoch}: {round(three_pe[-1]*100.0, 3)}%")
+# print(f"loss: {train[-1]}")
